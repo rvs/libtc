@@ -1,0 +1,18 @@
+#! /usr/bin/perl -pi~
+
+s/\bhash_table\b/tchash_table_t/g;
+s/\bhash_(new|search|find|replace|delete|destroy|rehash|keys|
+  [gs]etflags?|clearflag)\b/tchash_$1/xg;
+
+s/\blist(\s+\*+)/tclist_t$1/g;
+s/\blist_item\b/tclist_item_t/g;
+s/\blist_(new|free|destroy|remove|push|unshift|shift|pop|
+  find|search|delete(_matched)?|next(_matched)?|prev(_matched)?|unlock|
+  items|isfirst|islast|head|tail)\b/tclist_$1/xg;
+
+s/\btree(\s+\*+)/tctree_t$1/g;
+s/\btree_(new|find|search|replace|delete|destroy)\b/tctree_$1/g;
+
+s/\btc_compar_fn\b/tccompare_fn/g;
+s/\btc_free_fn\b/tcfree_fn/g;
+s/\btc_io_fn\b/tcio_fn/g;

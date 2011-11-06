@@ -1,0 +1,971 @@
+This is ../../../libtc/doc/libtc.info, produced by makeinfo version 4.6
+from ../../../libtc/doc/libtc.texi.
+
+   This manual describes the external interface to libtc version 1.1.
+
+   Copyright 2002-2004  Michael Ahlberg, Måns Rullgård
+
+   Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+   The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+File: libtc.info,  Node: Top,  Next: Data structures,  Prev: (dir),  Up: (dir)
+
+   This manual describes the external interface to libtc version 1.1.
+
+   Copyright (C) 2002-2004  Michael Ahlberg, Måns Rullgård
+
+* Menu:
+
+* Data structures::     Organize your data.
+* Configuration files:: Save your preferences.
+* String utilities::    If string.h isn't enough.
+* Memory allocation::   Beyond malloc.
+* Portability::         When your libc is missing things.
+
+* Concept index::
+* Function index::
+
+
+File: libtc.info,  Node: Data structures,  Next: Configuration files,  Prev: Top,  Up: Top
+
+Data structures
+***************
+
+Libtc provides implementations of linked lists, hash tables, and binary
+trees.  These use a similar interface for adding and retrieving
+elements.  All have functions to find, add, update and remove data.
+There may also be other more specialized functions available.
+
+* Menu:
+
+* Linked list::         For unordered data.
+* Hash table::          For key/value pairs
+* Binary tree::         Fast access of ordered data
+
+
+File: libtc.info,  Node: Linked list,  Next: Hash table,  Prev: Data structures,  Up: Data structures
+
+Linked list
+===========
+
+A linked list stores elements consisting of a single user-supplied
+pointer.  No meaning is attached to the target of the pointer.  The
+linked list has functions to add and remove elements at both ends of the
+list.  Thus, the list can be used as a stack or a queue.  Other
+functions find or remove elements anywhere in the list.  Finally,
+functions exist to iterate over all or selected elements in the list,
+forwards or backwards.
+
+   Linked lists support three locking levels: none, sloppy, and strict.
+The first of these provides no locking.  It is faster than the other
+levels, but should be used only when it is known that no more than one
+thread will be accessing the list at any time.  With sloppy locking, the
+list is locked for operations depending on the structure of the list
+being constant, or when changes are made to the structure.  Under strict
+locking, all accesses to the list are serialized, even searches and
+iterations.
+
+   A list is represented by the opaque data type `tclist_t'.  This and
+all the following functions are declared in `tclist.h'.
+
+ - Function: tclist_t * tclist_new (int LOCKING)
+     This function allocates and initializes a new list.  LOCKING can
+     be one of `TC_LOCK_NONE', `TC_LOCK_SLOPPY' or `TC_LOCK_STRICT'.
+     The meaning of these is described above.  The return value is a
+     pointer to the new list, or `NULL' if something went wrong.
+
+ - Function: int tclist_destroy (tclist_t *LST, tcfree_fn LFREE)
+     This functions destroys the list LST and frees any resources used
+     by it.  The function LFREE, if non-NULL, is called for each
+     element in the list.
+
+ - Function: int tclist_push (tclist_t *LST, void *P)
+ - Function: int tclist_unshift (tclist_t *LST, void *P)
+     These functions add the value P to the end or start of the list,
+     respectively.  Their names match the equivalent functions in Perl.
+
+ - Function: void * tclist_shift (tclist_t *LST)
+ - Function: void * tclist_pop (tclist_t *LST)
+     These functions remove and return one element from the list LST.
+     `tclist_shift' removes at the start of the list and `tclist_pop'
+     at the end.  These names were also taken from Perl.
+
+ - Function: void tclist_remove (tclist_t *LST, tclist_item_t*L,
+          tcfree_f FREE)
+     This function marks the list element L for removal as soon it can
+     safely be deleted from the list, i.e. when it is not in use by
+     other threads.  The data in L is freed with FREE.
+
+ - Function: int tclist_find (tclist_t *LST, void *P, void *RET,
+          tccompare_fn CMP)
+     This function searches the list for the first element matching P
+     as determined by the comparison function CMP.  P is always passed
+     as the first parameter to CMP, permitting dirty tricks.  If a
+     match is found, it's data pointer is stored in the location pointed
+     to be RET, if RET is non-NULL, and 0 is returned.  Otherwise 1 is
+     returned and no other action is taken.
+
+ - Function: int tclist_search (tclist_t *LST, void *P, void *RET,
+          tccompare_fn CMP)
+     This function is similar to `tclist_find'. If no match is found the
+     value of P is appended to the list and also stored in *RET.
+     Return values are the same as for `tclist_find'.
+
+ - Function: int tclist_delete (tclist_t *LST, void *P, tccompare_fn
+          CMP, tcfree_fn fr)
+     This function searches the list like `tclist_find'.  If a match is
+     found, that element is deleted from the list and the function FR
+     is called for the deleted elements data as soon as it is safe to
+     do so.  Only the first match is deleted.  If a match was found, 0
+     is returned.  Otherwise the return value is 1.
+
+ - Function: int tclist_delete_matched (tclist_t *LST, void *P,
+          tccompare_fn CMP, tcfree_fn FR)
+     This function searches the entire list for elements matching P.
+     All matches are deleted and FR is called for each deleted element.
+     The number of elements deleted is returned.
+
+ - Function: void * tclist_next (tclist_t *LST, tclist_item_t **L)
+ - Function: void * tclist_prev (tclist_t *LST, tclist_item_t **L)
+     These functions are used to iterate over the list LST.  For each
+     call the position is advanced one step and the value pointed to by
+     L is updated.  If L points to a value of NULL a new iteration is
+     started.  When the end of the list is reached, NULL is stored in
+     *L.  The return value from each call is the stored pointer for the
+     corresponding position in the list.  `tclist_next' iterates
+     forwards and `tclist_prev' backwards.  If an iteration is to be
+     aborted before the end of the list is reached `tclist_unlock' must
+     be called for the most recently returned element.
+
+ - Function: void * tclist_next_matched (tclist_t *LST, tclist_item_t
+          **L, void *KEY, tccompare_fn cmp)
+ - Function: void * tclist_prev_matched (tclist_t *LST, tclist_item_t
+          **L, void *KEY, tccompare_fn cmp)
+     These functions iterate over a list like `tclist_next' and
+     `tclist_prev', except they only return elements matching KEY using
+     comparison function CMP.
+
+ - Function: int tclist_unlock (tclist_t *LST, tclist_item_t *L)
+     This function unlocks an the element L in list LST.  Since this
+     can trigger a pending removal of the element, L must not be used
+     after this call.
+
+ - Function: unsigned long tclist_items (tclist_t *LST)
+     This function returns the number of elements in the list LST.  The
+     count returned does not include elements marked as deleted but
+     still in use.
+
+
+File: libtc.info,  Node: Hash table,  Next: Binary tree,  Prev: Linked list,  Up: Data structures
+
+Hash table
+==========
+
+The libtc hash table maps arbitrary keys onto pointer values.  The data
+pointed to by these pointers is never examined directly.  The hash table
+uses separate chaining in case of collisions.  This means that any hash
+table can contain arbitrarily many entries, though performance decreases
+for over-full tables.
+
+   If the flag TCHASH_FROZEN is not set, adding or removing an element
+will cause the size of the table to be adjusted to keep the load level
+within reasonable bounds.
+
+   The functions below are declared in `tchash.h' along with all types
+and constants used by the hash table.  As all libtc functions, the hash
+table functions are thread safe.
+
+   This manual describes version 1.1 of the API.  The old API is
+selected if the preprocessor macro `TCHASH_OLDAPI' is defined before
+including `tchash.h'.  The old version will be removed in the future.
+
+ - Function: tchash_table_t * tchash_new (size_t SIZE, int LOCK,
+          uint32_t FLAGS)
+     This function allocates and initializes a new hash table of
+     initial size SIZE and with flags FLAGS.  If LOCK is nonzero, the
+     hash table will be protected against concurrent modification by
+     multiple threads.
+
+ - Function: int tchash_find (tchash_table_t *HT, void *KEY, int KS,
+          void *RET)
+     This function tries to locate the entry with key KEY.  If it
+     exists, its data pointer is stored in *RET, if non-NULL, and 0 is
+     returned.  If KEY does not exists in the table, 1 is returned.
+     The size of the key is KS.  If KS is -1, the key is assumed to be
+     a null terminated string.
+
+ - Function: int tchash_search (tchash_table_t *HT, void *KEY, int KS,
+          void *DATA, void *RET)
+     This function is similar to `tchash_find', the difference being
+     that if KEY is not found in the table it is added with data equal
+     to DATA, which is also stored in *RET.  Return values are the same
+     as for `tchash_find'.  The size of the key is KS.  If KS is -1,
+     the key is assumed to be a null terminated string.
+
+ - Function: int tchash_delete (tchash_table_t *HT, void *KEY, int KS,
+          void *RET)
+     If KEY exists, it is deleted and the corresponding data is stored
+     in *RET.  Otherwise nothing is done.  The return value is 0 if KEY
+     was found, 1 otherwise.  The size of the key is KS.  If KS is -1,
+     the key is assumed to be a null terminated string.
+
+ - Function: int tchash_replace (tchash_table_t *HT, void *KEY, int KS,
+          void *DATA, void *RET)
+     This function adds DATA to the table HT with key KEY.  If KEY
+     already exists, its data is replaced with DATA.  The return value
+     is 0 if KEY already existed, 1 otherwise.  The size of the key is
+     KS.  If KS is -1, the key is assumed to be a null terminated
+     string.  The old value, if any, is placed in *RET, if RET is not
+     NULL.
+
+ - Function: int tchash_destroy (tchash_table_t *HT, tcfree_fn HFREE)
+     This functions destroys the hash table HT and frees all resources
+     used by it.  The function HFREE, if non-NULL, is called for each
+     element in the table.
+
+ - Function: int tchash_rehash (tchash_table_t *HT)
+     This function resizes the table HT to better fit the number of
+     elements currently in the table.  This is done even if flag
+     TCHASH_FROZEN is set.
+
+ - Function: void ** tchash_keys (tchash_table_t *HT, int *NK, int FAST)
+     This function returns an array of all keys in the table, in no
+     particular order.  The number of keys is stored in *NK.  If FAST
+     is nonzero pointers to the actual keys are returned.  Otherwise,
+     if FAST is 0, copies of the keys are returned.  In the case of an
+     empty table NULL is returned and *NK is set to 0. If several
+     threads are accessing the table, only the latter form should be
+     used since a key can be deleted at any time.  For the same reason,
+     it is not certain that all returned keys will still be in the
+     table when they are used.
+
+ - Function: int tchash_sethashfunction (tchash_table_t *HT,
+          tchash_function_t HF)
+     This function sets the hash function used.  The hash function is
+     of type `tchash_function_t',
+          u_int hash_func(void *KEY, size_t SIZE);
+     If HF is NULL, the default hash function is selected.  The hash
+     function can only be changed when the table is empty.  The return
+     value is 0 if the hash function was changed, nonzero if the table
+     was not empty.
+
+ - Function: int tchash_setthresholds (tchash_table_t *HT, float LOW,
+          float HIGH)
+     This function sets the thresholds used for automatic rehashing of
+     the table.  If either value is less than zero, the corresponding
+     threshold is left unchanged.  On success, zero is returned.  If
+     the resulting high threshold would be less than the low threshold,
+     a nonzero value is returned.
+
+ - Function: int tchash_getflags (tchash_table_t *HT)
+     Get the current flags for hash table HT.
+
+ - Function: int tchash_setflags (tchash_table_t *HT, int FLAGS)
+     Set all flags of the table to FLAGS.
+
+ - Function: int tchash_setflag (tchash_table_t *HT, int FLAGS)
+ - Function: int tchash_clearflag (tchash_table_t *HT, int FLAGS)
+     Set or clear all flags indicated in FLAGS, leaving other flags
+     unchanged.
+
+
+File: libtc.info,  Node: Binary tree,  Prev: Hash table,  Up: Data structures
+
+Binary tree
+===========
+
+To be completed.
+
+
+File: libtc.info,  Node: Configuration files,  Next: String utilities,  Prev: Data structures,  Up: Top
+
+Configuration files
+*******************
+
+It is often desirable to store various values in text files, e.g. for
+saving configuration parameters between program runs.  To simplify this
+matter, libtc provides functions for parsing, manipulating and writing a
+rather flexible but simple file format.
+
+* Menu:
+
+* Configuration file syntax::    Contents of configuration files
+* Configuration file functions:: Accessing configuration files
+* Configuration file examples::
+
+
+File: libtc.info,  Node: Configuration file syntax,  Next: Configuration file functions,  Prev: Configuration files,  Up: Configuration files
+
+Configuration file syntax
+=========================
+
+A configuration file consists of multiple entries.  Each entry begins
+with a key followed by one or more values separated by any number of
+spaces.  Entries are separated by newline or semicolon.
+
+   A value can be any of:
+   * An integer.  The prefixes 0x and 0 are treated the usual way
+     indicating hexadecimal and octal representation.  The values are
+     stored internally using 64 bits.
+
+   * A floating-point number in radix 10.  The number is parsed with the
+     standard C library function `strtod'.  *Note strtod: (libc)Parsing
+     of Floats.
+
+   * A text string enclosed in single or double quotes.  When double
+     quotes are used, the string is subject to variable expansion and
+     backslash escaping by `tcstrexp', using `(' and `)' as delimiters
+     and `:' as flag separator. *Note tcstrexp: String utilities, for
+     detailed syntax.
+
+     Briefly, any occurrence of `$(foo)' is replaced with the value of
+     `foo'.  If `foo' has several values, they are separated by a
+     single space.  Non-string values are converted using `sprintf'.
+     Variable expansion is recursive, and loops are not detected, so
+     beware.
+
+   * A reference to another entry.  Simply write the name of another
+     entry, relative to the section in which the reference is found.
+     This is also recursive.
+
+   * The token `NULL'.  In this case 0 will be returned for the numeric
+     types, and NULL for strings, unless the `z' modifier is specified
+     when accessing the value.
+
+   Variable expansion and reference resolving is performed from
+`tcconf_getvalue' and `tcconf_nextvalue', so the order of entries is
+not important from this aspect.
+
+   An entry can also be a section grouping possibly related entries.  A
+section consists of the name of the section followed the section
+contents within braces ({}).  Sections can be nested to any reasonable
+depth.  If a section name occurs more than once, the contents of those
+sections are merged.
+
+   Sections can also be delimited by brackets ([]), in which case
+multiple sections with the same name are not merged.  If both types of
+section with the same name exist, the results are possibly strange.
+Avoid this.
+
+   If a section name is followed by a `:' and another (relative) section
+name, possibly repeated, the contents of these sections are virtually
+included at the top of current section.  This means that the `get' and
+`next' functions will dynamically search these sections as appropriate.
+Again, don't create loops.
+
+   A comment is started by the `#' character and lasts until the end of
+line.
+
+   There is an example of a configuration file elsewhere in this manual.
+*Note Sample configuration file::.
+
+
+File: libtc.info,  Node: Configuration file functions,  Next: Configuration file examples,  Prev: Configuration file syntax,  Up: Configuration files
+
+Configuration file functions
+============================
+
+This section describes the function used to manipulate configuration
+files.  They are all declared in `tcconf.h'.  There is no explicit
+function to free a conf section.  Use `tcfree' for this.
+
+ - Function: tcconf_section_t * tcconf_load (tcconf_section_t *SEC,
+          void *DATA, tcio_fn FUN)
+     This function loads a configuration file from DATA using FUN to
+     read bytes.  If SEC is not NULL, the new entries are merged with
+     the section referenced by SEC.  Otherwise a new section is
+     allocated.  A pointer to the section containing the new entries is
+     returned, i.e. if SEC is non-NULL it is also the return value.
+     DATA could be a `FILE *' and FUN a pointer to `fread', though in
+     this case the next function might be more convenient.
+
+ - Function: tcconf_section_t * tcconf_load_file (tcconf_section_t
+          *SEC, char *FILE)
+     This is the same as `tcconf_load', except that the configuration
+     is read from the file named by FILE.
+
+ - Function: tcconf_section_t * tcconf_load_string (tcconf_section_t
+          *SEC, char *CONF, int SIZE)
+     This is the same as `tcconf_load', except that SIZE bytes of
+     configuration is read from the memory location CONF.  If SIZE is
+     less than 0, the CONF is assumed to be null-terminated.
+
+ - Function: tcconf_section_t * tcconf_getsection (tcconf_section_t
+          *SEC, char *NAME)
+     This function returns the subsection NAME of section SEC, or NULL
+     if the specified subsection does not exist.  The returned section
+     must be freed with `tcfree'.
+
+ - Function: int tcconf_getvalue (tcconf_section_t *SEC, char *NAME,
+          char *FORMAT, ...)
+     This function finds the entry with key NAME in section SEC.  The
+     values for this entry are stored in the locations addressed by the
+     arguments following FORMAT.  FORMAT is a printf-style string
+     specifying the desired type of each value.  If there is a mismatch
+     between FORMAT and the corresponding value in the configuration
+     entry, this and the remaining entries are ignored.  The number of
+     matched entries is returned.  If several entries with the same key
+     exist, the last one is used.
+
+     The table below lists the recognized format specifiers and the
+     corresponding types.  Note that it is not compatible with `printf'.
+
+    `i'
+    `d'
+          A pointer to an integer.  Without modifiers, the target type
+          is signed 32-bit.  With the `l' modifier, the target should
+          be a 64-bit integer type.  With the `u' modifier, the target
+          is unsigned.  Both `l' and `u' may be used.
+
+    `f'
+          A pointer to a `float' or, with `l' modifier, a `double'.
+
+    `s'
+          A pointer to `char *'.  The returned string is allocated with
+          `malloc', and must be freed when no longer needed.
+
+     All types can also have the `z' modifier.  When present, no value
+     will be written if the special token `NULL' was used in the
+     configuration file.  In all other cases the `s' modifier is
+     ignored.
+
+ - Function: int tcconf_nextvalue (tcconf_section_t *SEC, char *NAME,
+          void **STATE, char *FORMAT, ...)
+     This function is similar to `tcconf_getvalue'.  Instead of
+     returning only the last entry, `tcconf_nextvalue' iterates over
+     all entries with key NAME.  The current position is stored in
+     STATE.  Initially, STATE must be NULL.  When there are no more
+     matching entries, STATE is set to NULL.  The remaining arguments
+     and the return value are the same as for `tcconf_getvalue'.
+
+ - Function: int tcconf_nextvalue_g (tcconf_section_t *SEC, char *GLOB,
+          void **STATE, char **NAME, char *FORMAT, ...)
+     This function is similar to `tcconf_nextvalue', with the difference
+     that all entries matching the shell glob GLOB are returned.  Only
+     the final component of a path name may contain meta-characters.
+     For each matching entry, the actual name is returned in *NAME.
+
+ - Function: tcconf_section_t * tcconf_nextsection (tcconf_section_t
+          *SEC, char *NAME, void **STATE)
+     This function returns, on successive calls, all subsections NAME
+     of SEC.  Both merged and non-merged sections are returned (but
+     don't use both).  STATE is used as in `tcconf_nextvalue'.  The
+     return value is a pointer to the selected subsection, or NULL if no
+     more subsections of that name exist.  Each returned section must
+     be freed with `tcfree'.
+
+ - Function: tcconf_section_t * tcconf_new (char *NAME)
+     This function allocates a new, empty section.  The return value is
+     a pointer to the new section.  This always succeeds, unless you
+     are out of memory.
+
+ - Function: int tcconf_setvalue (tcconf_section_t *SEC, char *NAME,
+          char *FORMAT, ...)
+     This function adds a new entry with name NAME to section SEC.
+     FORMAT is a text string describing the values of the new entry.
+     The remaining arguments are the actual values.  The format string
+     uses the same specifiers as `tcconf_getvalue'.  A new entry is
+     always added, even if there already exists one of the same name.
+     To replace an existing entry, it must first be removed with
+     `tcconf_clearvalue'.
+
+ - Function: int tcconf_clearvalue (tcconf_section_t *SEC, char *NAME)
+     This function removes all entries with name NAME in section SEC.
+     Subsections of SEC are not affected.
+
+
+File: libtc.info,  Node: Configuration file examples,  Prev: Configuration file functions,  Up: Configuration files
+
+Configuration file examples
+===========================
+
+* Menu:
+
+* Sample configuration file::
+* Reading configuration file example::
+
+
+File: libtc.info,  Node: Sample configuration file,  Next: Reading configuration file example,  Prev: Configuration file examples,  Up: Configuration file examples
+
+Sample configuration file
+-------------------------
+
+Here is a short example of a configuration file.
+
+     description "Meaning of life"
+     value 42   # ignore this
+     probability 1.46e-18
+     mice {
+         names "Frodo" "Gandalf"
+         comment "Something is wrong"
+     }
+
+
+File: libtc.info,  Node: Reading configuration file example,  Prev: Sample configuration file,  Up: Configuration file examples
+
+Reading configuration file example
+----------------------------------
+
+This C program will read the file in the previous section and fetch some
+of the values from it.
+
+     #include <stdio.h>
+     #include <tcconf.h>
+     #include <tcalloc.h>
+     
+     extern int
+     main(int argc, char **argv)
+     {
+         char *str;
+         int val;
+         tcconf_section_t *sec;
+     
+         if(!(sec = tcconf_load_file (NULL, "sample.conf"))){
+             fprintf(stderr, "Error loading file.\n");
+             exit(1);
+         }
+     
+         if(tcconf_getvalue(sec, "description", "%s", &str) == 1){
+             printf("Got description = \"%s\"\n", str);
+             free(str);
+         }
+     
+         if(tcconf_getvalue(sec, "value", "%i", &val) == 1)
+             printf("Got value = %i\n", val);
+     
+         tcfree(sec);
+     
+         return 0;
+     }
+
+
+File: libtc.info,  Node: String utilities,  Next: Memory allocation,  Prev: Configuration files,  Up: Top
+
+String utilities
+****************
+
+Libtc provides some string manipulation functions not present in the
+standard C library.  They are declared in `tcstring.h'.
+
+ - Function: int tcstresc (char *DST, const char *SRC)
+     This function copies the null-terminated string SRC to DST,
+     performing backslash escape substitution.  The resulting string is
+     never longer than the source string, DST need not have more space
+     than SRC.  In fact, they can be equal.  The return value is the
+     length of the resulting string.
+
+     The following sequences are substituted.  They are mostly the same
+     as the usual C escape sequences.
+
+    `\t'
+          tab
+
+    `\n'
+          newline
+
+    `\r'
+          return
+
+    `\f'
+          form feed
+
+    `\b'
+          backspace
+
+    `\a'
+          alarm
+
+    `\e'
+          escape
+
+    `\<digits>'
+          octal char (\033 => escape)
+
+    `\x<hex digits>'
+          hex char (\x1b => escape)
+
+    `\c<char>'
+          control char (\c[ => escape)
+
+     A backslash followed by any other character is replaced by that
+     character.
+
+ - Function: char * tcstrexp (const char *SRC, const char *SD, const
+          char *ED, char FS, char *(*LOOKUP)(char *, void *), void *LD,
+          int FLAGS)
+     This function performs shell-like variable substitution and,
+     optionally, backslash escaping on the string SRC.  A variable
+     consists of a `$', followed by the variable name between one
+     character from SD and the corresponding character from ED.  If FS
+     is nonzero, it is the flag separator, meaning that if this
+     character is present between the delimiters, the variable name
+     ends there, and the remainder is processed as flags modifying the
+     substitution, see below.  Each variable name is passed to the
+     function LOOKUP, along with LD.  This function should return the
+     value of the variable, or NULL if it is undefined.
+
+     If a flag separator is specified in FS, and it is present between
+     the delimiters, the characters following it will modify the
+     substitution.  The following character sequences are recognized in
+     the flags field:
+
+    `u'
+          The value is converted to uppercase.
+
+    `l'
+          The value is converted to lowercase.
+
+    `sOFFSET:LENGTH'
+          A substring from the value of length LENGTH starting at
+          offset OFFSET is substituted.  If either of OFFSET or LENGTH
+          is negative, it is counted from the end of the string.  If
+          LENGTH is omitted, the rest of the string is used.  The `s'
+          is only necessary if OFFSET is negative, to distinguish the -
+          sign from the `-' flag described below.
+
+    `r/PATTERN/REPLACEMENT/'
+          Any match of the regular expression PATTERN in the value is
+          replaced with REPLACEMENT, as by `tcregsub'.  The delimiter
+          may be any character not present in the pattern or the
+          replacement.  If the delimiter is `/', the `r' may be
+          omitted.  If this is the last thing in the flags section, the
+          trailing delimiter may also be omitted.
+
+    `-'
+          If the variable is undefined, the expansion of the remainder
+          of the flags section is substituted.  Any previous flags are
+          applied to the final result.
+
+    `+'
+          If the variable is defined, the expansion of the remainder of
+          the flags section is substituted, any previous flags being
+          applied to the result.
+
+     These operations are performed in the following order:
+       1. substring
+
+       2. regex substitution
+
+       3. case change
+
+     The argument FLAGS should be a bitwise or combination of any of
+     the following flags:
+
+    `TCSTREXP_ESCAPE'
+          Perform backslash escape substitution as by `tcstresc'.  This
+          can be used to inhibit variable expansion by escaping the `$'.
+
+    `TCSTREXP_FREE'
+          Indicates that the strings returned by LOOKUP must be freed
+          with `free'.  If this flag is not set, nothing will be done
+          to free the variable values.
+
+    `TCSTREXP_KEEPUNDEF'
+          If this flag is set, any references to undefined variables
+          will remain in the output string.
+
+     The returned string is allocated with `malloc', and must be freed
+     when no longer needed.
+
+     Some examples might better illustrate the use of this function.
+     Assuming `tcstrexp' is called as
+          tcstrexp(string, "(", ")", ':', lookup, data, TCSTREXP_ESCAPE)
+     the following substitutions will be performed.
+
+    `$(foo)'
+          The value of `foo', if set, otherwise nothing.
+
+    `$(foo:u)'
+          The value of `foo', converted to uppercase.
+
+    `$(foo:-bar)'
+          The value of `foo', if set, otherwise the string `bar'.
+
+    `$(foo:-$(bar))'
+          The value of `foo', if set, otherwise the value of `bar'.
+
+    `$(foo:+bar)'
+          If `foo' is set, the string `bar' is substituted, otherwise
+          nothing.
+
+    `$(foo:0:5)'
+          The first five characters of `foo'.
+
+    `$(foo:0:-5)'
+          All but the last five characters of `foo'.
+
+    `$(foo:0:3-$(bar:s-5))'
+          The first 3 characters of `foo', if defined.  Otherwise the
+          first three characters of the last five characters of `bar'
+          are used.
+
+ - Function: char * tcregsub (const char *STR, const char *PAT, const
+          char *SUB, int FLAGS)
+     This function matches the regular expression PAT against the
+     string STR.  Each match is replaced by SUB.  In the replacement,
+     `${1}' is replaced with the text matched by the first
+     subexpression, and so on.  The result is returned as a malloc()ed
+     string.  If there is an error in the regular expression, NULL is
+     returned.
+
+     The syntax of the regular expression is whatever the system
+     `regexec' uses, hopefully extended POSIX regular expressions.
+
+
+File: libtc.info,  Node: Memory allocation,  Next: Portability,  Prev: String utilities,  Up: Top
+
+Memory allocation
+*****************
+
+Libtc contains some functions for enhanced memory allocation.
+
+* Menu:
+
+* Reference counting::  Free memory when it's safe
+* Attributes::          Arbitrary attributes on memory blocks
+* Memory pools::        Efficient allocation of equal-sized blocks
+
+
+File: libtc.info,  Node: Reference counting,  Next: Attributes,  Prev: Memory allocation,  Up: Memory allocation
+
+Reference counting
+==================
+
+When using dynamically allocated memory, it is important not to free any
+blocks while they are still used somewhere.  It is equally important to
+free the blocks when they are no longer used.  Keeping track of when it
+is safe to free some memory can be difficult, particularly in
+multi-threaded applications.  Libtc aids in this task by providing a set
+of functions for allocating memory blocks with attached reference
+counters, and functions for manipulating the counters.  Whenever a
+counter reaches zero, the block is freed.
+
+   All the functions below are declared in `tcalloc.h'.
+
+ - Function: void * tcalloc (size_t SIZE)
+     Allocate a reference counted block of size SIZE.  Returns a
+     pointer to the allocated block, or NULL if the allocation failed.
+
+ - Function: void * tcallocz (size_t SIZE)
+     Like `tcalloc', but also fill the block with zeros.
+
+ - Function: void * tcref (void * P)
+     Increase the reference counter for the block at address P.  Return
+     P.
+
+ - Function: void tcfree (void * P)
+     Decrease the reference counter for the block at address P.  If the
+     counter reaches zero, the block is freed.
+
+ - Function: void * tcallocd (size_t SIZE, void (*REF)(void *), void
+          (*FREE))
+     Allocate a block like `tcalloc'.  A pointer to the block is passed
+     to REF when `tcref' is called, and FREE just before the block is
+     freed.  This is useful to ensure that complex data structures are
+     completely freed.
+
+ - Function: void * tcallocdz (size_t SIZE, void (*REF)(void *), void
+          (*FREE))
+     Same as `tcallocd', but also fill the block with zeros.
+
+
+File: libtc.info,  Node: Attributes,  Next: Memory pools,  Prev: Reference counting,  Up: Memory allocation
+
+Attributes
+==========
+
+Blocks of memory allocated with the functions described in the previous
+section can be assigned arbitrary attributes using the following
+functions.  They are declared in `tcalloc.h'.
+
+ - Function: int tcattr_set (void *P, char * NAME, void * VAL,
+          tcattr_ref_t REF, tcfree_fn FREE)
+     Set attribute NAME of P to VAL.  If the attribute is already set,
+     it is replaced.  All attributes are automatically deleted when the
+     memory is freed with `tcfree'.
+
+ - Function: void * tcattr_get (void * P, char * NAME)
+     Get attribute NAME of P.  If the attribute doesn't exist, NULL is
+     returned.
+
+ - Function: int tcattr_getall (void * P, int N, tcattr_t * ATTR)
+     Get all attributes of P and store them in ATTR.  Only the N first
+     attributes are returned. The number of attributes is returned.
+
+ - Function: int tcattr_del (void * P, char * NAME)
+     Delete attribute NAME from P.
+
+
+File: libtc.info,  Node: Memory pools,  Prev: Attributes,  Up: Memory allocation
+
+Memory pools
+============
+
+This section describes functions for allocating a large number of equal
+sized blocks more efficiently, both in speed and overhead, than the
+system malloc.  They are declared in `tcmempool.h'.
+
+ - Function: tcmempool_t * tcmempool_new (size_t SIZE, int LOCK)
+     Create a new pool with chunks of size SIZE.  If LOCK is nonzero,
+     the pool is locked during access.  If SIZE is larger than the
+     system page size, NULL is returned.  In this case, normal malloc is
+     good enough.  When the pool is no longer needed, it can be freed
+     with `tcfree'.  Don't do this if there are still chunks allocated
+     from the pool.
+
+ - Function: void * tcmempool_get (tcmempool_t * MP)
+     Get a chunk from pool MP.
+
+ - Function: void tcmempool_free (void * P)
+     Free a chunk obtained with `tcmempool_get'.
+
+
+File: libtc.info,  Node: Portability,  Next: Concept index,  Prev: Memory allocation,  Up: Top
+
+Portability
+***********
+
+Libtc includes some functions present in the C library on some systems,
+but missing on others.
+
+
+File: libtc.info,  Node: Concept index,  Next: Function index,  Prev: Portability,  Up: Top
+
+Concept index
+*************
+
+* Menu:
+
+* backslash escape:                      String utilities.
+* backslash substitution:                String utilities.
+* configuration file syntax:             Configuration file syntax.
+* configuration file, example of:        Sample configuration file.
+* configuration files:                   Configuration files.
+* configuration files, accessing:        Configuration file functions.
+* data structures:                       Data structures.
+* escape, backslash:                     String utilities.
+* expansion, variable:                   String utilities.
+* hash table:                            Hash table.
+* iterating, over list:                  Linked list.
+* linked list:                           Linked list.
+* list:                                  Linked list.
+* queue:                                 Linked list.
+* reference counting:                    Reference counting.
+* replacing, in hash:                    Hash table.
+* searching, in hash:                    Hash table.
+* searching, in list:                    Linked list.
+* stack:                                 Linked list.
+* substitution, backslash:               String utilities.
+* substitution, variable:                String utilities.
+* syntax, of configuration files:        Configuration file syntax.
+* variable expansion:                    String utilities.
+* variable substitution:                 String utilities.
+
+
+File: libtc.info,  Node: Function index,  Prev: Concept index,  Up: Top
+
+Function index
+**************
+
+* Menu:
+
+* tcalloc:                               Reference counting.
+* tcallocd:                              Reference counting.
+* tcallocdz:                             Reference counting.
+* tcallocz:                              Reference counting.
+* tcattr_del:                            Attributes.
+* tcattr_get:                            Attributes.
+* tcattr_getall:                         Attributes.
+* tcattr_set:                            Attributes.
+* tcconf_clearvalue:                     Configuration file functions.
+* tcconf_getsection:                     Configuration file functions.
+* tcconf_getvalue:                       Configuration file functions.
+* tcconf_load:                           Configuration file functions.
+* tcconf_load_file:                      Configuration file functions.
+* tcconf_load_string:                    Configuration file functions.
+* tcconf_new:                            Configuration file functions.
+* tcconf_nextsection:                    Configuration file functions.
+* tcconf_nextvalue:                      Configuration file functions.
+* tcconf_nextvalue_g:                    Configuration file functions.
+* tcconf_setvalue:                       Configuration file functions.
+* tcfree:                                Reference counting.
+* tchash_clearflag:                      Hash table.
+* tchash_delete:                         Hash table.
+* tchash_destroy:                        Hash table.
+* tchash_find:                           Hash table.
+* tchash_getflags:                       Hash table.
+* tchash_keys:                           Hash table.
+* tchash_new:                            Hash table.
+* tchash_rehash:                         Hash table.
+* tchash_replace:                        Hash table.
+* tchash_search:                         Hash table.
+* tchash_setflag:                        Hash table.
+* tchash_setflags:                       Hash table.
+* tchash_sethashfunction:                Hash table.
+* tchash_setthresholds:                  Hash table.
+* tclist_delete:                         Linked list.
+* tclist_delete_matched:                 Linked list.
+* tclist_destroy:                        Linked list.
+* tclist_find:                           Linked list.
+* tclist_items:                          Linked list.
+* tclist_new:                            Linked list.
+* tclist_next:                           Linked list.
+* tclist_next_matched:                   Linked list.
+* tclist_pop:                            Linked list.
+* tclist_prev:                           Linked list.
+* tclist_prev_matched:                   Linked list.
+* tclist_push:                           Linked list.
+* tclist_remove:                         Linked list.
+* tclist_search:                         Linked list.
+* tclist_shift:                          Linked list.
+* tclist_unlock:                         Linked list.
+* tclist_unshift:                        Linked list.
+* tcmempool_free:                        Memory pools.
+* tcmempool_get:                         Memory pools.
+* tcmempool_new:                         Memory pools.
+* tcref:                                 Reference counting.
+* tcregsub:                              String utilities.
+* tcstresc:                              String utilities.
+* tcstrexp:                              String utilities.
+
+
+
+Tag Table:
+Node: Top1271
+Node: Data structures1772
+Node: Linked list2316
+Node: Hash table7995
+Node: Binary tree13390
+Node: Configuration files13514
+Node: Configuration file syntax14088
+Node: Configuration file functions16967
+Node: Configuration file examples22578
+Node: Sample configuration file22833
+Node: Reading configuration file example23285
+Node: String utilities24284
+Node: Memory allocation30273
+Node: Reference counting30664
+Node: Attributes32434
+Node: Memory pools33475
+Node: Portability34395
+Node: Concept index34614
+Node: Function index36159
+
+End Tag Table

@@ -1,0 +1,6 @@
+This directory contains the file tcconf-mode.el.  It defines an Emacs
+major mode suitable for editing configurations files readable by
+libtc.  Automatic indentation and syntax highlighting is provided.  To
+use it, put it somewhere your Emacs will find it, and add
+(require 'tcconf-mode) to your init.el or .emacs.  It has been tested
+with XEmacs 21.4.13.  It may or may not work with other versions.

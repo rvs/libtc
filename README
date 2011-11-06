@@ -1,0 +1,5 @@
+Libtc is a library of useful functions.  It also contains some
+functions often missing on some systems.  See the texinfo
+documentation for detailed documentation.
+
+The libtc web page is at http://libtc.sourceforge.net.

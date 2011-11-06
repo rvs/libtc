@@ -1,0 +1,141 @@
+AC_INIT(libtc, 1.1.0)
+AC_CONFIG_SRCDIR([include/tclist.h])
+
+AM_INIT_AUTOMAKE([1.8 dist-bzip2])
+
+AM_CONFIG_HEADER(config.h)
+
+AC_DISABLE_STATIC
+
+dnl Check programs
+AC_PROG_CC
+AC_PROG_LIBTOOL
+AM_PROG_LEX
+
+dnl Check for pthread support
+SAVECFLAGS="$CFLAGS"
+SAVELIBS="$LIBS"
+CFLAGS="-pthread $CFLAGS"
+LIBS="-pthread $LIBS"
+AC_CHECK_FUNC(pthread_mutex_init,,
+    CFLAGS="$SAVECFLAGS"
+    LIBS="$SAVELIBS"
+    AC_CHECK_LIB(pthread, pthread_mutex_init,,
+        AC_CHECK_LIB(pthreads, pthread_mutex_init,,
+            AC_MSG_ERROR([No pthreads support found.]))))
+
+dnl Check byte order
+AC_CHECK_HEADERS(alloca.h stdarg.h)
+AC_CHECK_HEADER(byteswap.h, BYTESWAP_FRAG=$srcdir/include/byteswap.yes,
+		BYTESWAP_FRAG=$srcdir/include/byteswap.no)
+AC_SUBST_FILE(BYTESWAP_FRAG)
+AC_C_BIGENDIAN
+if test $ac_cv_c_bigendian = yes; then
+    ENDIAN_FRAG=$srcdir/include/endian.big
+else
+    ENDIAN_FRAG=$srcdir/include/endian.little
+fi
+AC_SUBST_FILE(ENDIAN_FRAG)
+
+AC_C_INLINE
+
+dnl Check size of integers
+AC_CHECK_SIZEOF(char, 1)
+AC_CHECK_SIZEOF(short, 2)
+AC_CHECK_SIZEOF(int, 4)
+AC_CHECK_SIZEOF(long, 4)
+AC_CHECK_SIZEOF(long long, 8)
+for t in char short int long long_long; do
+    size=`eval "echo \\\$ac_cv_sizeof_$t"`
+    if [[ -z "`eval echo \\\$int$size`" ]]; then
+	eval int$size=\"`echo $t | tr _ ' '`\"
+    fi
+done
+
+dnl Check for typedefs
+AC_CHECK_HEADER([stdint.h],
+		[AC_SUBST([LIBTC_INTTYPES], ["#include <stdint.h>"])],
+		[AC_CHECK_HEADER([inttypes.h],
+		    [AC_SUBST([LIBTC_INTTYPES], ["#include <inttypes.h>"])],
+		    [AC_SUBST([LIBTC_INTTYPES], [:])])])
+
+LIBTC_CHECK_TYPE(int8_t, $int1)
+LIBTC_CHECK_TYPE(u_int8_t, unsigned $int1)
+
+LIBTC_CHECK_TYPE(int16_t, $int2)
+LIBTC_CHECK_TYPE(u_int16_t, unsigned $int2)
+
+LIBTC_CHECK_TYPE(int32_t, $int4)
+LIBTC_CHECK_TYPE(u_int32_t, unsigned $int4)
+
+LIBTC_CHECK_TYPE(int64_t, $int8)
+LIBTC_CHECK_TYPE(u_int64_t, unsigned $int8)
+
+AC_SUBST(LIBTC_TYPE_int8_t)
+AC_SUBST(LIBTC_TYPE_u_int8_t)
+AC_SUBST(LIBTC_TYPE_int16_t)
+AC_SUBST(LIBTC_TYPE_u_int16_t)
+AC_SUBST(LIBTC_TYPE_int32_t)
+AC_SUBST(LIBTC_TYPE_u_int32_t)
+AC_SUBST(LIBTC_TYPE_int64_t)
+AC_SUBST(LIBTC_TYPE_u_int64_t)
+
+dnl Check for functions
+AC_CHECK_FUNC(snprintf,
+	AC_DEFINE([HAVE_SNPRINTF], 1, [Define if snprintf exists.])
+	[SNPRINTF_FRAG=/dev/null],
+	[SNPRINTF_FRAG=$srcdir/include/snprintf.no]
+	[AC_LIBOBJ(snprintf)])
+AC_CHECK_FUNC(strsep,
+	AC_DEFINE([HAVE_STRSEP], 1, [Define if strsep exists.])
+	[STRSEP_FRAG=$srcdir/include/strsep.yes],
+	[STRSEP_FRAG=$srcdir/include/strsep.no]
+	[AC_LIBOBJ(strsep)])
+
+AC_SUBST_FILE(SNPRINTF_FRAG)
+AC_SUBST_FILE(STRSEP_FRAG)
+
+dnl Check for strdupa macro
+AC_MSG_CHECKING(for strdupa)
+AC_CACHE_VAL(libtc_cv_func_strdupa, [
+AC_TRY_COMPILE([
+#define _GNU_SOURCE
+#include <string.h>], [
+#ifndef strdupa
+#error "strdupa not defined."
+#endif
+], libtc_cv_func_strdupa=yes, libtc_cv_func_strdupa=no)])
+AC_MSG_RESULT($libtc_cv_func_strdupa)
+if [[ $libtc_cv_func_strdupa = yes ]]; then
+    AC_DEFINE([HAVE_STRDUPA], 1, [Define if strdupa exists.])
+fi
+
+INSTALL_SCRIPT="echo \"  INSTALL \$\$[]p\" && true \" >/dev/null \" && $INSTALL_SCRIPT"
+INSTALL_DATA="echo \"  INSTALL \$\$[]{p-\$\$[]file}\" && true \" >/dev/null \" && $INSTALL_DATA"
+
+patch -N <<\END
+--- libtool~    Sat Jan 17 04:16:27 2004
++++ libtool     Sat Jan 17 04:23:37 2004
+@@ -5993,6 +5993,8 @@
+     if test -n "$current_libdirs"; then
+       # Maybe just do a dry run.
+       test -n "$run" && current_libdirs=" -n$current_libdirs"
++      # pass --quiet recursively if set in this libtool invocation
++      test "$show" = ":" && current_libdirs=" --quiet$current_libdirs"
+       exec_cmd='$SHELL $[]0 --finish$current_libdirs'
+     else
+       exit 0
+END
+
+[LTLIBOBJS=`echo "$LIB@&t@OBJS" | sed 's/\.[^.]* /.lo /g;s/\.[^.]*$/.lo/'`]
+AC_SUBST(LTLIBOBJS)
+AC_CONFIG_FILES([include/tcstring.h
+		 include/tctypes.h
+	  	 include/tcendian.h
+		 include/tcdirent.h
+	  	 doc/Makefile
+		 src/Makefile
+		 include/Makefile
+		 lisp/Makefile
+		 Makefile])
+AC_OUTPUT

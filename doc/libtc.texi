@@ -1,0 +1,899 @@
+\input texinfo
+@c %**start of header
+@setfilename libtc.info
+@settitle Libtc Programmers Guide
+@c %**end of header
+
+@ifinfo
+This manual describes the external interface to libtc version 1.1.
+
+Copyright 2002-2004  Michael Ahlberg, Måns Rullgård
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+@end ifinfo
+
+@titlepage
+@title Libtc Programmers Guide
+@subtitle Version 1.1
+@author M@aa{}ns Rullg@aa{}rd
+@page
+@vskip 0pt plus 1filll
+Copyright @copyright{} 2002-2004  Michael Ahlberg, M@aa{}ns Rullg@aa{}rd
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+@end titlepage
+
+@node   Top, Data structures, (dir), (dir)
+@ifinfo
+This manual describes the external interface to libtc version 1.1.
+
+Copyright @copyright{} 2002-2004  Michael Ahlberg, Måns Rullgård
+@end ifinfo
+
+@menu
+* Data structures::     Organize your data.
+* Configuration files:: Save your preferences.
+* String utilities::    If string.h isn't enough.
+* Memory allocation::   Beyond malloc.
+* Portability::         When your libc is missing things.
+
+* Concept index::
+* Function index::
+@end menu
+
+@node   Data structures, Configuration files, Top, Top
+@chapter Data structures
+@cindex data structures
+
+Libtc provides implementations of linked lists, hash tables, and binary
+trees.  These use a similar interface for adding and retrieving
+elements.  All have functions to find, add, update and remove data.
+There may also be other more specialized functions available.
+
+@menu
+* Linked list::         For unordered data.
+* Hash table::          For key/value pairs
+* Binary tree::         Fast access of ordered data
+@end menu
+
+@node   Linked list, Hash table, Data structures, Data structures
+@section Linked list
+@cindex list
+@cindex linked list
+@cindex queue
+@cindex stack
+@cindex iterating, over list
+@cindex searching, in list
+
+A linked list stores elements consisting of a single user-supplied
+pointer.  No meaning is attached to the target of the pointer.  The
+linked list has functions to add and remove elements at both ends of the
+list.  Thus, the list can be used as a stack or a queue.  Other
+functions find or remove elements anywhere in the list.  Finally,
+functions exist to iterate over all or selected elements in the list,
+forwards or backwards.
+
+Linked lists support three locking levels: none, sloppy, and strict.
+The first of these provides no locking.  It is faster than the other
+levels, but should be used only when it is known that no more than one
+thread will be accessing the list at any time.  With sloppy locking, the
+list is locked for operations depending on the structure of the list
+being constant, or when changes are made to the structure.  Under strict
+locking, all accesses to the list are serialized, even searches and
+iterations.
+
+A list is represented by the opaque data type @code{tclist_t}.  This and
+all the following functions are declared in @file{tclist.h}.
+
+@deftypefun {tclist_t *} tclist_new (int @var{locking})
+This function allocates and initializes a new list.  @var{locking} can
+be one of @code{TC_LOCK_NONE}, @code{TC_LOCK_SLOPPY} or
+@code{TC_LOCK_STRICT}.  The meaning of these is described above.  The
+return value is a pointer to the new list, or @code{NULL} if something
+went wrong.
+@end deftypefun
+
+@deftypefun int tclist_destroy (tclist_t *@var{lst}, tcfree_fn @var{lfree})
+This functions destroys the list @var{lst} and frees any resources used
+by it.  The function @var{lfree}, if non-NULL, is called for each
+element in the list.
+@end deftypefun
+
+@deftypefun int tclist_push (tclist_t *@var{lst}, void *@var{p})
+@deftypefunx int tclist_unshift (tclist_t *@var{lst}, void *@var{p})
+These functions add the value @var{p} to the end or start of the list,
+respectively.  Their names match the equivalent functions in Perl.
+@end deftypefun
+
+@deftypefun {void *} tclist_shift (tclist_t *@var{lst})
+@deftypefunx {void *} tclist_pop (tclist_t *@var{lst})
+These functions remove and return one element from the list @var{lst}.
+@code{tclist_shift} removes at the start of the list and @code{tclist_pop}
+at the end.  These names were also taken from Perl.
+@end deftypefun
+
+@deftypefun void tclist_remove (tclist_t *@var{lst}, tclist_item_t*@var{l}, tcfree_f @var{free})
+This function marks the list element @var{l} for removal as soon it can
+safely be deleted from the list, i.e. when it is not in use by other
+threads.  The data in @var{l} is freed with @var{free}.
+@end deftypefun
+
+@deftypefun int tclist_find (tclist_t *@var{lst}, void *@var{p}, void *@var{ret}, tccompare_fn @var{cmp})
+This function searches the list for the first element matching @var{p}
+as determined by the comparison function @var{cmp}.  @var{p} is always
+passed as the first parameter to @var{cmp}, permitting dirty tricks.
+If a match is found, it's data pointer is stored in the location pointed
+to be @var{ret}, if @var{ret} is non-NULL, and 0 is returned.  Otherwise
+1 is returned and no other action is taken.
+@end deftypefun
+
+@deftypefun int tclist_search (tclist_t *@var{lst}, void *@var{p}, void *@var{ret}, tccompare_fn @var{cmp})
+This function is similar to @code{tclist_find}. If no match is found the
+value of @var{p} is appended to the list and also stored in *@var{ret}.
+Return values are the same as for @code{tclist_find}.
+@end deftypefun
+
+@deftypefun int tclist_delete (tclist_t *@var{lst}, void *@var{p}, tccompare_fn @var{cmp}, tcfree_fn fr)
+This function searches the list like @code{tclist_find}.  If a match is
+found, that element is deleted from the list and the function @var{fr}
+is called for the deleted elements data as soon as it is safe to do so.
+Only the first match is deleted.  If a match was found, 0 is returned.
+Otherwise the return value is 1.
+@end deftypefun
+
+@deftypefun int tclist_delete_matched (tclist_t *@var{lst}, void *@var{p}, tccompare_fn @var{cmp}, tcfree_fn @var{fr})
+This function searches the entire list for elements matching @var{p}.
+All matches are deleted and @var{fr} is called for each deleted
+element.  The number of elements deleted is returned.
+@end deftypefun
+
+@deftypefun {void *} tclist_next (tclist_t *@var{lst}, tclist_item_t **@var{l})
+@deftypefunx {void *} tclist_prev (tclist_t *@var{lst}, tclist_item_t **@var{l})
+These functions are used to iterate over the list @var{lst}.  For each
+call the position is advanced one step and the value pointed to by
+@var{l} is updated.  If @var{l} points to a value of NULL a new
+iteration is started.  When the end of the list is reached, NULL is
+stored in *@var{l}.  The return value from each call is the stored
+pointer for the corresponding position in the list.  @code{tclist_next}
+iterates forwards and @code{tclist_prev} backwards.  If an iteration is to
+be aborted before the end of the list is reached @code{tclist_unlock} must
+be called for the most recently returned element.
+@end deftypefun
+
+@deftypefun {void *} tclist_next_matched (tclist_t *@var{lst}, tclist_item_t **@var{l}, void *@var{key}, tccompare_fn cmp)
+@deftypefunx {void *} tclist_prev_matched (tclist_t *@var{lst}, tclist_item_t **@var{l}, void *@var{key}, tccompare_fn cmp)
+These functions iterate over a list like @code{tclist_next} and
+@code{tclist_prev}, except they only return elements matching @var{key}
+using comparison function @var{cmp}.
+@end deftypefun
+
+@deftypefun int tclist_unlock (tclist_t *@var{lst}, tclist_item_t *@var{l})
+This function unlocks an the element @var{l} in list @var{lst}.  Since
+this can trigger a pending removal of the element, @var{l} must not be
+used after this call.
+@end deftypefun
+
+@deftypefun {unsigned long} tclist_items (tclist_t *@var{lst})
+This function returns the number of elements in the list @var{lst}.  The
+count returned does not include elements marked as deleted but still in
+use.
+@end deftypefun
+
+@node   Hash table, Binary tree, Linked list, Data structures
+@section Hash table
+@cindex hash table
+@cindex searching, in hash
+@cindex replacing, in hash
+
+The libtc hash table maps arbitrary keys onto pointer values.  The data
+pointed to by these pointers is never examined directly.  The hash table
+uses separate chaining in case of collisions.  This means that any hash
+table can contain arbitrarily many entries, though performance decreases
+for over-full tables.
+
+If the flag TCHASH_FROZEN is not set, adding or removing an element will
+cause the size of the table to be adjusted to keep the load level within
+reasonable bounds.
+
+The functions below are declared in @file{tchash.h} along with all types
+and constants used by the hash table.  As all libtc functions, the hash
+table functions are thread safe.
+
+This manual describes version 1.1 of the API.  The old API is selected
+if the preprocessor macro @samp{TCHASH_OLDAPI} is defined before
+including @file{tchash.h}.  The old version will be removed in the
+future.
+
+@deftypefun {tchash_table_t *} tchash_new (size_t @var{size}, int @var{lock}, uint32_t @var{flags})
+This function allocates and initializes a new hash table of initial size
+@var{size} and with flags @var{flags}.  If @var{lock} is nonzero, the
+hash table will be protected against concurrent modification by multiple
+threads.
+@end deftypefun
+
+@deftypefun int tchash_find (tchash_table_t *@var{ht}, void *@var{key}, int @var{ks}, void *@var{ret})
+This function tries to locate the entry with key @var{key}.  If it
+exists, its data pointer is stored in *@var{ret}, if non-NULL, and 0 is
+returned.  If @var{key} does not exists in the table, 1 is returned.
+The size of the key is @var{ks}.  If @var{ks} is -1, the key is assumed
+to be a null terminated string.
+@end deftypefun
+
+@deftypefun int tchash_search (tchash_table_t *@var{ht}, void *@var{key}, int @var{ks}, void *@var{data}, void *@var{ret})
+This function is similar to @code{tchash_find}, the difference being
+that if @var{key} is not found in the table it is added with data equal
+to @var{data}, which is also stored in *@var{ret}.  Return values are
+the same as for @code{tchash_find}.  The size of the key is @var{ks}.
+If @var{ks} is -1, the key is assumed to be a null terminated string.
+@end deftypefun
+
+@deftypefun int tchash_delete (tchash_table_t *@var{ht}, void *@var{key}, int @var{ks}, void *@var{ret})
+If @var{key} exists, it is deleted and the corresponding data is stored
+in *@var{ret}.  Otherwise nothing is done.  The return value is 0 if
+@var{key} was found, 1 otherwise.  The size of the key is @var{ks}.  If
+@var{ks} is -1, the key is assumed to be a null terminated string.
+@end deftypefun
+
+@deftypefun int tchash_replace (tchash_table_t *@var{ht}, void *@var{key}, int @var{ks}, void *@var{data}, void *@var{ret})
+This function adds @var{data} to the table @var{ht} with key @var{key}.
+If @var{key} already exists, its data is replaced with @var{data}.  The
+return value is 0 if @var{key} already existed, 1 otherwise.  The size
+of the key is @var{ks}.  If @var{ks} is -1, the key is assumed to be a
+null terminated string.  The old value, if any, is placed in *@var{ret},
+if @var{ret} is not NULL.
+@end deftypefun
+
+@deftypefun int tchash_destroy (tchash_table_t *@var{ht}, tcfree_fn @var{hfree})
+This functions destroys the hash table @var{ht} and frees all resources
+used by it.  The function @var{hfree}, if non-NULL, is called for each
+element in the table.
+@end deftypefun
+
+@deftypefun int tchash_rehash (tchash_table_t *@var{ht})
+This function resizes the table @var{ht} to better fit the number of
+elements currently in the table.  This is done even if flag
+TCHASH_FROZEN is set.
+@end deftypefun
+
+@deftypefun {void **} tchash_keys (tchash_table_t *@var{ht}, int *@var{nk}, int @var{fast})
+This function returns an array of all keys in the table, in no
+particular order.  The number of keys is stored in *@var{nk}.  If
+@var{fast} is nonzero pointers to the actual keys are returned.
+Otherwise, if @var{fast} is 0, copies of the keys are returned.  In the
+case of an empty table NULL is returned and *@var{nk} is set to 0. If
+several threads are accessing the table, only the latter form should be
+used since a key can be deleted at any time.  For the same reason, it is
+not certain that all returned keys will still be in the table when they
+are used.
+@end deftypefun
+
+@deftypefun int tchash_sethashfunction (tchash_table_t *@var{ht}, tchash_function_t @var{hf})
+This function sets the hash function used.  The hash function is of type
+@samp{tchash_function_t},
+@smallexample
+u_int hash_func(void *@var{key}, size_t @var{size});
+@end smallexample
+If @var{hf} is NULL, the default hash function is selected.  The hash
+function can only be changed when the table is empty.  The return value
+is 0 if the hash function was changed, nonzero if the table was not
+empty.
+@end deftypefun
+
+@deftypefun int tchash_setthresholds (tchash_table_t *@var{ht}, float @var{low}, float @var{high})
+This function sets the thresholds used for automatic rehashing of the
+table.  If either value is less than zero, the corresponding threshold
+is left unchanged.  On success, zero is returned.  If the resulting
+high threshold would be less than the low threshold, a nonzero value is
+returned.
+@end deftypefun
+
+@deftypefun int tchash_getflags (tchash_table_t *@var{ht})
+Get the current flags for hash table @var{ht}.
+@end deftypefun
+
+@deftypefun int tchash_setflags (tchash_table_t *@var{ht}, int @var{flags})
+Set all flags of the table to @var{flags}.
+@end deftypefun
+
+@deftypefun int tchash_setflag (tchash_table_t *@var{ht}, int @var{flags})
+@deftypefunx int tchash_clearflag (tchash_table_t *@var{ht}, int @var{flags})
+Set or clear all flags indicated in @var{flags}, leaving other flags
+unchanged.
+@end deftypefun
+
+@node   Binary tree,  , Hash table, Data structures
+@section Binary tree
+
+To be completed.
+
+@node   Configuration files, String utilities, Data structures, Top
+@chapter Configuration files
+@cindex configuration files
+
+It is often desirable to store various values in text files, e.g. for
+saving configuration parameters between program runs.  To simplify this
+matter, libtc provides functions for parsing, manipulating and writing a
+rather flexible but simple file format.
+
+@menu
+* Configuration file syntax::    Contents of configuration files
+* Configuration file functions:: Accessing configuration files
+* Configuration file examples::
+@end menu
+
+@node   Configuration file syntax, Configuration file functions, Configuration files, Configuration files
+@section Configuration file syntax
+@cindex syntax, of configuration files
+@cindex configuration file syntax
+
+A configuration file consists of multiple entries.  Each entry begins
+with a key followed by one or more values separated by any number of
+spaces.  Entries are separated by newline or semicolon.
+
+A value can be any of:
+@itemize @bullet
+@item
+An integer.  The prefixes 0x and 0 are treated the usual way indicating
+hexadecimal and octal representation.  The values are stored internally
+using 64 bits.
+
+@item
+A floating-point number in radix 10.  The number is parsed with the
+standard C library function @code{strtod}.
+@ifinfo
+@xref{Parsing of Floats,, strtod, libc}.
+@end ifinfo
+
+@item
+A text string enclosed in single or double quotes.  When double quotes
+are used, the string is subject to variable expansion and backslash
+escaping by @code{tcstrexp}, using @samp{(} and @samp{)} as delimiters
+and @samp{:} as flag separator. @xref{String utilities, tcstrexp}, for
+detailed syntax.
+
+Briefly, any occurrence of @samp{$(foo)} is replaced with the value of
+@samp{foo}.  If @samp{foo} has several values, they are separated by a
+single space.  Non-string values are converted using @code{sprintf}.
+Variable expansion is recursive, and loops are not detected, so beware.
+
+@item
+A reference to another entry.  Simply write the name of another entry,
+relative to the section in which the reference is found.  This is also
+recursive.
+
+@item
+The token @samp{NULL}.  In this case 0 will be returned for the numeric
+types, and NULL for strings, unless the @samp{z} modifier is specified
+when accessing the value.
+@end itemize
+
+Variable expansion and reference resolving is performed from
+@code{tcconf_getvalue} and @code{tcconf_nextvalue}, so the order of
+entries is not important from this aspect.
+
+An entry can also be a section grouping possibly related entries.  A
+section consists of the name of the section followed the section
+contents within braces (@{@}).  Sections can be nested to any reasonable
+depth.  If a section name occurs more than once, the contents of those
+sections are merged.
+
+Sections can also be delimited by brackets ([]), in which case multiple
+sections with the same name are not merged.  If both types of section
+with the same name exist, the results are possibly strange.  Avoid this.
+
+If a section name is followed by a @samp{:} and another (relative) section
+name, possibly repeated, the contents of these sections are virtually
+included at the top of current section.  This means that the @code{get}
+and @code{next} functions will dynamically search these sections as
+appropriate.  Again, don't create loops.
+
+A comment is started by the @samp{#} character and lasts until the end
+of line.
+
+There is an example of a configuration file elsewhere in this manual.
+@xref{Sample configuration file}.
+
+@node   Configuration file functions, Configuration file examples, Configuration file syntax, Configuration files
+@section Configuration file functions
+@cindex configuration files, accessing
+
+This section describes the function used to manipulate configuration
+files.  They are all declared in @file{tcconf.h}.  There is no explicit
+function to free a conf section.  Use @code{tcfree} for this.
+
+@deftypefun {tcconf_section_t *} tcconf_load (tcconf_section_t *@var{sec}, void *@var{data}, tcio_fn @var{fun})
+This function loads a configuration file from @var{data} using @var{fun}
+to read bytes.  If @var{sec} is not NULL, the new entries are merged
+with the section referenced by @var{sec}.  Otherwise a new section is
+allocated.  A pointer to the section containing the new entries is
+returned, i.e. if @var{sec} is non-NULL it is also the return value.
+@var{data} could be a @code{FILE *} and @var{fun} a pointer to
+@code{fread}, though in this case the next function might be more
+convenient.
+@end deftypefun
+
+@deftypefun {tcconf_section_t *} tcconf_load_file (tcconf_section_t *@var{sec}, char *@var{file})
+This is the same as @code{tcconf_load}, except that the configuration is read
+from the file named by @var{file}.
+@end deftypefun
+
+@deftypefun {tcconf_section_t *} tcconf_load_string (tcconf_section_t *@var{sec}, char *@var{conf}, int @var{size})
+This is the same as @code{tcconf_load}, except that @var{size} bytes of
+configuration is read from the memory location @var{conf}.  If
+@var{size} is less than 0, the @var{conf} is assumed to be
+null-terminated.
+@end deftypefun
+
+@deftypefun {tcconf_section_t *} tcconf_getsection (tcconf_section_t *@var{sec}, char *@var{name})
+This function returns the subsection @var{name} of section @var{sec}, or
+NULL if the specified subsection does not exist.  The returned section
+must be freed with @code{tcfree}.
+@end deftypefun
+
+@deftypefun int tcconf_getvalue (tcconf_section_t *@var{sec}, char *@var{name}, char *@var{format}, ...)
+This function finds the entry with key @var{name} in section @var{sec}.
+The values for this entry are stored in the locations addressed by the
+arguments following @var{format}.  @var{format} is a printf-style string
+specifying the desired type of each value.  If there is a mismatch
+between @var{format} and the corresponding value in the configuration
+entry, this and the remaining entries are ignored.  The number of
+matched entries is returned.  If several entries with the same key
+exist, the last one is used.
+
+The table below lists the recognized format specifiers and the
+corresponding types.  Note that it is not compatible with @code{printf}.
+
+@table @code
+@item i
+@itemx d
+A pointer to an integer.  Without modifiers, the target type is signed
+32-bit.  With the @samp{l} modifier, the target should be a 64-bit
+integer type.  With the @samp{u} modifier, the target is unsigned.  Both
+@samp{l} and @samp{u} may be used.
+
+@item f
+A pointer to a @samp{float} or, with @samp{l} modifier, a @samp{double}.
+
+@item s
+A pointer to @samp{char *}.  The returned string is allocated with
+@code{malloc}, and must be freed when no longer needed.
+@end table
+
+All types can also have the @samp{z} modifier.  When present, no value
+will be written if the special token @samp{NULL} was used in the
+configuration file.  In all other cases the @samp{s} modifier is
+ignored.
+@end deftypefun
+
+@deftypefun int tcconf_nextvalue (tcconf_section_t *@var{sec}, char *@var{name}, void **@var{state}, char *@var{format}, ...)
+This function is similar to @code{tcconf_getvalue}.  Instead of returning
+only the last entry, @code{tcconf_nextvalue} iterates over all entries
+with key @var{name}.  The current position is stored in @var{state}.
+Initially, @var{state} must be NULL.  When there are no more matching
+entries, @var{state} is set to NULL.  The remaining arguments and the
+return value are the same as for @code{tcconf_getvalue}.
+@end deftypefun
+
+@deftypefun int tcconf_nextvalue_g (tcconf_section_t *@var{sec}, char *@var{glob}, void **@var{state}, char **@var{name}, char *@var{format}, ...)
+This function is similar to @code{tcconf_nextvalue}, with the difference
+that all entries matching the shell glob @var{glob} are returned.  Only
+the final component of a path name may contain meta-characters.  For
+each matching entry, the actual name is returned in *@var{name}.
+@end deftypefun
+
+@deftypefun {tcconf_section_t *} tcconf_nextsection (tcconf_section_t *@var{sec}, char *@var{name}, void **@var{state})
+This function returns, on successive calls, all subsections @var{name}
+of @var{sec}.  Both merged and non-merged sections are returned (but
+don't use both).  @var{state} is used as in @code{tcconf_nextvalue}.
+The return value is a pointer to the selected subsection, or NULL if no
+more subsections of that name exist.  Each returned section must be freed
+with @code{tcfree}.
+@end deftypefun
+
+@deftypefun {tcconf_section_t *} tcconf_new (char *@var{name})
+This function allocates a new, empty section.  The return value is a
+pointer to the new section.  This always succeeds, unless you are out of
+memory.
+@end deftypefun
+
+@deftypefun int tcconf_setvalue (tcconf_section_t *@var{sec}, char *@var{name}, char *@var{format}, ...)
+This function adds a new entry with name @var{name} to section
+@var{sec}.  @var{format} is a text string describing the values of the
+new entry.  The remaining arguments are the actual values.  The format
+string uses the same specifiers as @code{tcconf_getvalue}.  A new entry is
+always added, even if there already exists one of the same name.  To
+replace an existing entry, it must first be removed with
+@code{tcconf_clearvalue}.
+@end deftypefun
+
+@deftypefun int tcconf_clearvalue (tcconf_section_t *@var{sec}, char *@var{name})
+This function removes all entries with name @var{name} in section
+@var{sec}.  Subsections of @var{sec} are not affected.
+@end deftypefun
+
+@node   Configuration file examples,  , Configuration file functions, Configuration files
+@section Configuration file examples
+
+@menu
+* Sample configuration file::
+* Reading configuration file example::
+@end menu
+
+@node  Sample configuration file, Reading configuration file example, Configuration file examples, Configuration file examples
+@subsection Sample configuration file
+@cindex configuration file, example of
+
+Here is a short example of a configuration file.
+
+@example
+description "Meaning of life"
+value 42   # ignore this
+probability 1.46e-18
+mice @{
+    names "Frodo" "Gandalf"
+    comment "Something is wrong"
+@}
+@end example
+
+@node  Reading configuration file example,  , Sample configuration file, Configuration file examples
+@subsection Reading configuration file example
+
+This C program will read the file in the previous section and fetch some
+of the values from it.
+
+@example
+#include <stdio.h>
+#include <tcconf.h>
+#include <tcalloc.h>
+
+extern int
+main(int argc, char **argv)
+@{
+    char *str;
+    int val;
+    tcconf_section_t *sec;
+
+    if(!(sec = tcconf_load_file (NULL, "sample.conf")))@{
+        fprintf(stderr, "Error loading file.\n");
+        exit(1);
+    @}
+
+    if(tcconf_getvalue(sec, "description", "%s", &str) == 1)@{
+        printf("Got description = \"%s\"\n", str);
+        free(str);
+    @}
+
+    if(tcconf_getvalue(sec, "value", "%i", &val) == 1)
+        printf("Got value = %i\n", val);
+
+    tcfree(sec);
+
+    return 0;
+@}
+@end example
+
+@node   String utilities, Memory allocation, Configuration files, Top
+@chapter String utilities
+@cindex backslash escape
+@cindex escape, backslash
+@cindex backslash substitution
+@cindex substitution, backslash
+@cindex variable expansion
+@cindex variable substitution
+@cindex expansion, variable
+@cindex substitution, variable
+
+Libtc provides some string manipulation functions not present in the
+standard C library.  They are declared in @file{tcstring.h}.
+
+@deftypefun int tcstresc (char *@var{dst}, const char *@var{src})
+This function copies the null-terminated string @var{src} to @var{dst},
+performing backslash escape substitution.  The resulting string is never
+longer than the source string, @var{dst} need not have more space than
+@var{src}.  In fact, they can be equal.  The return value is the length
+of the resulting string.
+
+The following sequences are substituted.  They are mostly the same as
+the usual C escape sequences.
+
+@table @code
+@item \t
+tab
+@item \n
+newline
+@item \r
+return
+@item \f
+form feed
+@item \b
+backspace
+@item \a
+alarm
+@item \e
+escape
+@item \<digits>
+octal char (\033 => escape)
+@item \x<hex digits>
+hex char (\x1b => escape)
+@item \c<char>
+control char (\c[ => escape)
+@end table
+
+A backslash followed by any other character is replaced by that
+character.
+@end deftypefun
+
+@deftypefun {char *} tcstrexp (const char *@var{src}, const char *@var{sd}, const char *@var{ed}, char @var{fs}, char *(*@var{lookup})(char *, void *), void *@var{ld}, int @var{flags})
+This function performs shell-like variable substitution and, optionally,
+backslash escaping on the string @var{src}.  A variable consists of a
+@samp{$}, followed by the variable name between one character from
+@var{sd} and the corresponding character from @var{ed}.  If @var{fs} is
+nonzero, it is the flag separator, meaning that if this character is
+present between the delimiters, the variable name ends there, and the
+remainder is processed as flags modifying the substitution, see below.
+Each variable name is passed to the function @var{lookup}, along with
+@var{ld}.  This function should return the value of the variable, or
+NULL if it is undefined.
+
+If a flag separator is specified in @var{fs}, and it is present between
+the delimiters, the characters following it will modify the
+substitution.  The following character sequences are recognized in the
+flags field:
+
+@table @code
+@item u
+The value is converted to uppercase.
+@item l
+The value is converted to lowercase.
+@item sOFFSET:LENGTH
+A substring from the value of length LENGTH starting at offset OFFSET is
+substituted.  If either of OFFSET or LENGTH is negative, it is counted
+from the end of the string.  If LENGTH is omitted, the rest of the
+string is used.  The @samp{s} is only necessary if OFFSET is negative,
+to distinguish the - sign from the @samp{-} flag described below.
+@item r/PATTERN/REPLACEMENT/
+Any match of the regular expression PATTERN in the value is replaced
+with REPLACEMENT, as by @code{tcregsub}.  The delimiter may be any
+character not present in the pattern or the replacement.  If the
+delimiter is @samp{/}, the @samp{r} may be omitted.  If this is the last
+thing in the flags section, the trailing delimiter may also be omitted.
+@item -
+If the variable is undefined, the expansion of the remainder of the
+flags section is substituted.  Any previous flags are applied to the
+final result.
+@item +
+If the variable is defined, the expansion of the remainder of the flags
+section is substituted, any previous flags being applied to the result.
+@end table
+
+These operations are performed in the following order:
+@enumerate
+@item
+substring
+@item
+regex substitution
+@item
+case change
+@end enumerate
+
+The argument @var{flags} should be a bitwise or combination of any of
+the following flags:
+
+@table @code
+@item TCSTREXP_ESCAPE
+Perform backslash escape substitution as by @code{tcstresc}.  This can
+be used to inhibit variable expansion by escaping the @samp{$}.
+@item TCSTREXP_FREE
+Indicates that the strings returned by @var{lookup} must be freed with
+@code{free}.  If this flag is not set, nothing will be done to free the
+variable values.
+@item TCSTREXP_KEEPUNDEF
+If this flag is set, any references to undefined variables will remain
+in the output string.
+@end table
+
+The returned string is allocated with @code{malloc}, and must be freed
+when no longer needed.
+
+Some examples might better illustrate the use of this function.
+Assuming @code{tcstrexp} is called as
+@example
+tcstrexp(string, "(", ")", ':', lookup, data, TCSTREXP_ESCAPE)
+@end example
+the following substitutions will be performed.
+
+@table @code
+@item $(foo)
+The value of @samp{foo}, if set, otherwise nothing.
+@item $(foo:u)
+The value of @samp{foo}, converted to uppercase.
+@item $(foo:-bar)
+The value of @samp{foo}, if set, otherwise the string @samp{bar}.
+@item $(foo:-$(bar))
+The value of @samp{foo}, if set, otherwise the value of @samp{bar}.
+@item $(foo:+bar)
+If @samp{foo} is set, the string @samp{bar} is substituted, otherwise
+nothing.
+@item $(foo:0:5)
+The first five characters of @samp{foo}.
+@item $(foo:0:-5)
+All but the last five characters of @samp{foo}.
+@item $(foo:0:3-$(bar:s-5))
+The first 3 characters of @samp{foo}, if defined.  Otherwise the first
+three characters of the last five characters of @samp{bar} are used.
+@end table
+@end deftypefun
+
+@deftypefun {char *} tcregsub (const char *@var{str}, const char *@var{pat}, const char *@var{sub}, int @var{flags})
+This function matches the regular expression @var{pat} against the
+string @var{str}.  Each match is replaced by @var{sub}.  In the
+replacement, @samp{$@{1@}} is replaced with the text matched by the
+first subexpression, and so on.  The result is returned as a malloc()ed
+string.  If there is an error in the regular expression, NULL is
+returned.
+
+The syntax of the regular expression is whatever the system
+@code{regexec} uses, hopefully extended POSIX regular expressions.
+@end deftypefun
+
+@node   Memory allocation, Portability, String utilities, Top
+@chapter Memory allocation
+
+Libtc contains some functions for enhanced memory allocation.
+
+@menu
+* Reference counting::  Free memory when it's safe
+* Attributes::          Arbitrary attributes on memory blocks
+* Memory pools::        Efficient allocation of equal-sized blocks
+@end menu
+
+@node Reference counting, Attributes, Memory allocation, Memory allocation
+@section Reference counting
+@cindex reference counting
+
+When using dynamically allocated memory, it is important not to free any
+blocks while they are still used somewhere.  It is equally important to
+free the blocks when they are no longer used.  Keeping track of when it
+is safe to free some memory can be difficult, particularly in
+multi-threaded applications.  Libtc aids in this task by providing a set
+of functions for allocating memory blocks with attached reference
+counters, and functions for manipulating the counters.  Whenever a
+counter reaches zero, the block is freed.
+
+All the functions below are declared in @file{tcalloc.h}.
+
+@deftypefun {void *} tcalloc (size_t @var{size})
+Allocate a reference counted block of size @var{size}.  Returns a
+pointer to the allocated block, or NULL if the allocation failed.
+@end deftypefun
+
+@deftypefun {void *} tcallocz (size_t @var{size})
+Like @code{tcalloc}, but also fill the block with zeros.
+@end deftypefun
+
+@deftypefun {void *} tcref (void * @var{p})
+Increase the reference counter for the block at address @var{p}.  Return
+@var{p}.
+@end deftypefun
+
+@deftypefun void tcfree (void * @var{p})
+Decrease the reference counter for the block at address @var{p}.  If
+the counter reaches zero, the block is freed.
+@end deftypefun
+
+@deftypefun {void *} tcallocd (size_t @var{size}, void (*@var{ref})(void *), void (*@var{free}))
+Allocate a block like @code{tcalloc}.  A pointer to the block is passed
+to @var{ref} when @code{tcref} is called, and @var{free} just before the
+block is freed.  This is useful to ensure that complex data structures
+are completely freed.
+@end deftypefun
+
+@deftypefun {void *} tcallocdz (size_t @var{size}, void (*@var{ref})(void *), void (*@var{free}))
+Same as @code{tcallocd}, but also fill the block with zeros.
+@end deftypefun
+
+@node Attributes, Memory pools, Reference counting, Memory allocation
+@section Attributes
+
+Blocks of memory allocated with the functions described in the previous
+section can be assigned arbitrary attributes using the following
+functions.  They are declared in @file{tcalloc.h}.
+
+@deftypefun int tcattr_set (void *@var{p}, char * @var{name}, void * @var{val}, tcattr_ref_t @var{ref}, tcfree_fn @var{free})
+Set attribute @var{name} of @var{p} to @var{val}.  If the attribute is
+already set, it is replaced.  All attributes are automatically deleted
+when the memory is freed with @code{tcfree}.
+@end deftypefun
+
+@deftypefun {void *} tcattr_get (void * @var{p}, char * @var{name})
+Get attribute @var{name} of @var{p}.  If the attribute doesn't exist,
+NULL is returned.
+@end deftypefun
+
+@deftypefun int tcattr_getall (void * @var{p}, int @var{n}, tcattr_t * @var{attr})
+Get all attributes of @var{p} and store them in @var{attr}.  Only the
+@var{n} first attributes are returned. The number of attributes is
+returned.
+@end deftypefun
+
+@deftypefun int tcattr_del (void * @var{p}, char * @var{name})
+Delete attribute @var{name} from @var{p}.
+@end deftypefun
+
+@node Memory pools,  , Attributes, Memory allocation
+@section Memory pools
+
+This section describes functions for allocating a large number of equal
+sized blocks more efficiently, both in speed and overhead, than the
+system malloc.  They are declared in @file{tcmempool.h}.
+
+@deftypefun {tcmempool_t *} tcmempool_new (size_t @var{size}, int @var{lock})
+Create a new pool with chunks of size @var{size}.  If @var{lock} is
+nonzero, the pool is locked during access.  If @var{size} is larger than
+the system page size, NULL is returned.  In this case, normal malloc is
+good enough.  When the pool is no longer needed, it can be freed with
+@code{tcfree}.  Don't do this if there are still chunks allocated from
+the pool.
+@end deftypefun
+
+@deftypefun {void *} tcmempool_get (tcmempool_t * @var{mp})
+Get a chunk from pool @var{mp}.
+@end deftypefun
+
+@deftypefun void tcmempool_free (void * @var{p})
+Free a chunk obtained with @code{tcmempool_get}.
+@end deftypefun
+
+@node   Portability, Concept index, Memory allocation, Top
+@chapter Portability
+
+Libtc includes some functions present in the C library on some systems,
+but missing on others.
+
+@node   Concept index, Function index, Portability, Top
+@unnumbered Concept index
+
+@printindex cp
+
+@node   Function index,  , Concept index, Top
+@unnumbered Function index
+
+@printindex fn
+
+@contents
+
+@bye

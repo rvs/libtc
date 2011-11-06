@@ -1,0 +1,9 @@
+#define TCENDIAN TCENDIAN_LITTLE
+
+#define htol_16(x) (x)
+#define htol_32(x) (x)
+#define htol_64(x) (x)
+
+#define htob_16(x) (bswap_16(x))
+#define htob_32(x) (bswap_32(x))
+#define htob_64(x) (bswap_64(x))
